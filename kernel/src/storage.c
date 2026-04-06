@@ -425,6 +425,8 @@ char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr){
     memcpy(&buffS+offset,&size,sizeof(int));
     char* dataBuff = malloc(ceil(size/512)*512);
     ata_read_sectors(addrToLba(&offset,addr+sizeof(int)),dataBuff,ceil(size/512));
+    //memcpy();
+    return dataBuff;
 }
 
 unsigned long long addrToLba(unsigned int* offset,unsigned long long addr){
