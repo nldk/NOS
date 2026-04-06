@@ -62,7 +62,7 @@ void shell(){
             clearScreen();
         }
         if(amount > 0 && str_cmp(component[0],"ls")){
-            list_files();
+            //list_files();
         }
         reset_input_buffer();
     }
