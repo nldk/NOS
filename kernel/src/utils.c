@@ -87,3 +87,31 @@ unsigned int split(char** buff, unsigned int buffSize, char c, char* str) {
 
     return count;
 }
+void* memcpy(void* dest, const void* src, unsigned int n) {
+    unsigned char* d = (unsigned char*)dest;
+    const unsigned char* s = (const unsigned char*)src;
+
+    for (unsigned int i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+
+    return dest;
+}
+double ceil(double x) {
+    int i = (int)x;
+
+    if (x > (double)i) {
+        return (double)(i + 1);
+    }
+
+    return (double)i;
+}
+double floor(double x) {
+    int i = (int)x;
+
+    if (x < (double)i) {
+        return (double)(i - 1);
+    }
+
+    return (double)i;
+}

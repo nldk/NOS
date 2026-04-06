@@ -58,6 +58,12 @@ void shell(){
             }
             print_char('\n');
         }
+        if(amount > 0 && str_cmp(component[0],"clear")){
+            clearScreen();
+        }
+        if(amount > 0 && str_cmp(component[0],"ls")){
+            list_files();
+        }
         reset_input_buffer();
     }
 }

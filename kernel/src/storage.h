@@ -19,6 +19,8 @@ typedef struct{
     char* name;
     unsigned int size;
     char* data;
+    unsigned long long firstDataAddr;
+    unsigned long long addr;
 }File;
 struct Directory{
     enum FileType type;
@@ -27,6 +29,7 @@ struct Directory{
     int amountOfMaxDirectories;
     File** files;
     int amountOfMaxFiles;
+    unsigned long long addr;
 };
 typedef struct {
     unsigned int startLBA;
@@ -69,4 +72,32 @@ int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count
 
 int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int count);
 
+
+typedef struct {
+    unsigned short magicNumber;
+    unsigned int version;
+    unsigned int startLBA;
+    unsigned int sizeInSectors;
+}SuperBlock;
+
+typedef struct {
+    char name[32];
+    unsigned long long dirTable;
+    unsigned long long fileTable;
+    unsigned long long nextDir;
+    char used;
+}DiskDir;
+typedef struct {
+    char name[32];
+    unsigned int size;
+    unsigned int firstDataLBA;
+    unsigned long long nextFile;
+    char used;
+} DiskFile;
+
+int formatDisk(unsigned int startLba);
+
+int loadFs(unsigned int startLba);
+
+unsigned long long addrToLba(unsigned int* offset,unsigned long long addr);
 #endif

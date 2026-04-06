@@ -320,3 +320,115 @@ int findNextAvailableDir(Directory* dir){
     }
     return next;
 }
+
+int formatDisk(unsigned int startLba){
+    SuperBlock sp = {0xCADE,0,startLba,0};
+    DiskDir dd = {"root",0,0,0};
+    char buff[512] = {0};
+    memcpy(buff, &sp, sizeof(SuperBlock));
+    memcpy(buff + sizeof(SuperBlock), &dd, sizeof(DiskDir));
+
+    ata_write_sector(startLba,buff);
+}
+
+int loadFs(unsigned int startLba){
+    char buff[512] = {0};
+    ata_read_sector(startLba,buff);
+    SuperBlock sp;
+    DiskDir rd;
+    memcpy(&sp,buff,sizeof(SuperBlock));
+    memcpy(&rd,buff+sizeof(SuperBlock),sizeof(DiskDir));
+}
+
+DiskDir loadDirFromDisk(unsigned long long addr){
+    unsigned int offset = 0;
+    unsigned long long lba = addrToLba(&offset,addr);
+    DiskDir dd;
+    if (offset>512-sizeof(DiskDir)){
+        char buff1[512];
+        ata_read_sector(lba,buff1);
+        char buff2[512];
+        ata_read_sector(lba+1,buff2);
+        memcpy(&dd,buff1+offset,512-offset);
+        memcpy(&dd+(512-offset),buff2,sizeof(DiskDir)-(512-offset));
+    }else{
+        char buff[512];
+        ata_read_sector(lba,buff);
+        memcpy(&dd,buff+offset,sizeof(DiskDir));
+    }
+    return dd;
+}
+
+Directory* loadDir(unsigned long long addr){
+    DiskDir dd = loadDirFromDisk(addr);
+    Directory* dir = createRootDirectory(dd.name);
+    dir->addr = addr;
+    unsigned long long currentDirAddr = dd.dirTable;
+
+    while (currentDirAddr != 0) {
+        DiskDir childDiskDir = loadDirFromDisk(currentDirAddr);
+        Directory* childDir = loadDir(currentDirAddr); // recursion
+        dir->directories[findNextAvailableDir(dir)] = childDir;
+        currentDirAddr = childDiskDir.nextDir;
+    }
+
+    unsigned long long currentFileAddr = dd.fileTable;
+
+    while (currentFileAddr != 0) {
+        DiskFile df;
+
+        unsigned int offset = 0;
+        unsigned long long lba = addrToLba(&offset, currentFileAddr);
+
+        char buff[512];
+        ata_read_sector(lba, buff);
+
+        memcpy(&df, buff + offset, sizeof(DiskFile));
+
+        File* file = malloc(sizeof(File));
+        file->type = FILE_TYPE_FILE;
+
+        file->name = malloc(33);
+        str_cp(df.name, file->name);
+
+        file->size = df.size;
+        file->data = 0;
+        file->firstDataAddr = df.firstDataLBA;
+        file->addr = currentFileAddr;
+
+        dir->files[findNextAvailableFile(dir)] = file;
+        
+        currentFileAddr = df.nextFile;
+    }
+    
+}
+
+char* loadFileDataFromDisk(File* file,unsigned int size){
+    char* data;
+    if (size){
+        data = malloc(file->size);
+        size = file->size;
+    }else{
+        data = malloc(size);
+    }
+    unsigned long long addr = file->firstDataAddr;
+
+    
+    
+}
+
+char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr){
+    char buffS[512];
+    unsigned int offset=0;
+    ata_read_sector(addrToLba(&offset,addr),&buffS);
+    int size = 0;
+    memcpy(&buffS+offset,&size,sizeof(int));
+    char* dataBuff = malloc(ceil(size/512)*512);
+    ata_read_sectors(addrToLba(&offset,addr+sizeof(int)),dataBuff,ceil(size/512));
+}
+
+unsigned long long addrToLba(unsigned int* offset,unsigned long long addr){
+    unsigned long long lba = floor(addr/512);
+    *offset = addr - lba * 512;
+    return lba;
+}
