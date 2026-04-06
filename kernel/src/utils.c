@@ -97,21 +97,3 @@ void* memcpy(void* dest, const void* src, unsigned int n) {
 
     return dest;
 }
-double ceil(double x) {
-    int i = (int)x;
-
-    if (x > (double)i) {
-        return (double)(i + 1);
-    }
-
-    return (double)i;
-}
-double floor(double x) {
-    int i = (int)x;
-
-    if (x < (double)i) {
-        return (double)(i - 1);
-    }
-
-    return (double)i;
-}

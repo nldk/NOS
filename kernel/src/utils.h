@@ -55,6 +55,4 @@ void trim(char* str);
 char str_cmp(char* str1, char* str2);
 unsigned int split(char** buff, unsigned int buffSize, char c, char* str);
 void* memcpy(void* dest, const void* src, unsigned int n);
-double ceil(double x);
-double floor(double x);
 #endif

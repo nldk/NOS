@@ -418,20 +418,20 @@ char* loadFileDataFromDisk(File* file,unsigned int size){
 }
 
 char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr){
-    char buffS[512];
+    unsigned char buffS[512];
     unsigned int offset=0;
-    ata_read_sector(addrToLba(&offset,addr),&buffS);
+    ata_read_sector(addrToLba(&offset,addr),buffS);
     int size = 0;
-    memcpy(&buffS+offset,&size,sizeof(int));
-    int c = ceil(size/512);
+    memcpy(&size,buffS+offset,sizeof(int));
+    int c = (size + 511) / 512;
     char* dataBuff = malloc(c*512);
-    ata_read_sectors(addrToLba(&offset,addr+sizeof(int)),dataBuff,ceil(size/512));
+    ata_read_sectors(addrToLba(&offset,addr+sizeof(int)),(unsigned char*)dataBuff,c);
     //memcpy();
     return dataBuff;
 }
 
 unsigned long long addrToLba(unsigned int* offset,unsigned long long addr){
-    unsigned long long lba = floor(addr/512);
+    unsigned long long lba = addr / 512;
     *offset = addr - lba * 512;
     return lba;
 }
