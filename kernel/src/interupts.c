@@ -92,6 +92,51 @@ void set_idt_entry(int vector, void (*handler)()) {
     idt[vector].offset_high = (addr >> 32) & 0xFFFFFFFF;
     idt[vector].zero        = 0;
 }
+
+__attribute__((interrupt))
+static void unhandled_irq_handler(struct interrupt_frame* frame) {
+    (void)frame;
+    outb(0x20, 0x20);
+}
+
+__attribute__((interrupt))
+static void unhandled_exception_handler(struct interrupt_frame* frame) {
+    (void)frame;
+    for (;;) {
+        __asm__ volatile("cli; hlt");
+    }
+}
+
+__attribute__((interrupt))
+static void unhandled_exception_with_error_handler(struct interrupt_frame* frame, uint64_t error_code) {
+    (void)frame;
+    (void)error_code;
+    for (;;) {
+        __asm__ volatile("cli; hlt");
+    }
+}
+
+static void init_default_idt_handlers(void) {
+    for (int i = 0; i < 256; i++) {
+        set_idt_entry(i, unhandled_irq_handler);
+    }
+
+    for (int i = 0; i < 32; i++) {
+        set_idt_entry(i, unhandled_exception_handler);
+    }
+
+    set_idt_entry(8, unhandled_exception_with_error_handler);
+    set_idt_entry(10, unhandled_exception_with_error_handler);
+    set_idt_entry(11, unhandled_exception_with_error_handler);
+    set_idt_entry(12, unhandled_exception_with_error_handler);
+    set_idt_entry(13, unhandled_exception_with_error_handler);
+    set_idt_entry(14, unhandled_exception_with_error_handler);
+    set_idt_entry(17, unhandled_exception_with_error_handler);
+    set_idt_entry(21, unhandled_exception_with_error_handler);
+    set_idt_entry(29, unhandled_exception_with_error_handler);
+    set_idt_entry(30, unhandled_exception_with_error_handler);
+}
+
 void load_idt() {
     struct idt_ptr idtp;
     idtp.limit = sizeof(idt) - 1;
@@ -103,7 +148,6 @@ void doubleFaultHander(struct interrupt_frame* frame, uint64_t error_code){
     (void)frame;
     (void)error_code;
     serial_write_string("Double Fault Occurred!\r\n");
-    error_printf("Double Fault Occurred!\n");
     for (;;) {
         __asm__ volatile("cli; hlt");
     }
@@ -114,7 +158,7 @@ void setDoubleFaultHander(){
 }
 void gdt_set_tss(struct gdt_tss_entry* entry, struct tss* tss_ptr) {
     uint64_t base = (uint64_t)tss_ptr;
-    uint32_t limit = sizeof(struct tss);
+    uint32_t limit = sizeof(struct tss) - 1;
 
     entry->limit_low = limit & 0xFFFF;
     entry->base_low = base & 0xFFFF;
@@ -173,6 +217,7 @@ void tss_load() {
     __asm__ volatile ("ltr %0" : : "r"(tss_selector));
 }
 void init_gdt_tss() {
+    init_default_idt_handlers();
     tss_init();
     gdt_load();
     tss_load();

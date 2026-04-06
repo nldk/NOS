@@ -36,5 +36,4 @@ fi
 qemu-system-x86_64 \
 	-boot a \
 	-drive file=floppy.img,format=raw,if=ide,index=0 \
-	#-drive file=hdd.img,format=raw,if=ide,index=0 \
 	-serial stdio
