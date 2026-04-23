@@ -72,6 +72,10 @@ int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count
 
 int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int count);
 
+int ata_identify(unsigned short *identify_words);
+
+int ata_smoke_test(void);
+
 
 typedef struct {
     unsigned short magicNumber;

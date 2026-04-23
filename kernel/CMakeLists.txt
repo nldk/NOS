@@ -33,11 +33,14 @@ target_compile_options(kernel.elf PRIVATE
     -mno-mmx
     -mno-80387
     -msoft-float
+    -fno-asynchronous-unwind-tables
+    -fno-unwind-tables
 )
 
 target_link_options(kernel.elf PRIVATE
     LINKER:-m,elf_x86_64
     LINKER:-T,${CMAKE_CURRENT_SOURCE_DIR}/linker.ld
+    LINKER:--build-id=none
     -nostdlib
     -no-pie
 )

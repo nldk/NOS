@@ -5,13 +5,33 @@
 
 #define ATA_TIMEOUT 1000000U
 
+#define ATA_REG_DATA       0x1F0
+#define ATA_REG_SECCOUNT0  0x1F2
+#define ATA_REG_LBA0       0x1F3
+#define ATA_REG_LBA1       0x1F4
+#define ATA_REG_LBA2       0x1F5
+#define ATA_REG_HDDEVSEL   0x1F6
+#define ATA_REG_COMMAND    0x1F7
+#define ATA_REG_STATUS     0x1F7
+#define ATA_REG_ALTSTATUS  0x3F6
+
+static void ata_io_wait(void) {
+    inb(ATA_REG_ALTSTATUS);
+    inb(ATA_REG_ALTSTATUS);
+    inb(ATA_REG_ALTSTATUS);
+    inb(ATA_REG_ALTSTATUS);
+}
+
+static int ata_select_lba28_drive(unsigned int lba) {
+    outb(ATA_REG_HDDEVSEL, (unsigned char)(0xE0 | ((lba >> 24) & 0x0F)));
+    ata_io_wait();
+    return ata_wait_busy();
+}
+
 int ata_wait_busy() {
     for (unsigned int i = 0; i < ATA_TIMEOUT; i++) {
-        unsigned char status = inb(0x1F7);
+        unsigned char status = inb(ATA_REG_STATUS);
         if ((status & ATA_SR_BSY) == 0) {
-            if (status & (ATA_SR_ERR | ATA_SR_DF)) {
-                return 0;
-            }
             return 1;
         }
     }
@@ -20,7 +40,7 @@ int ata_wait_busy() {
 
 int ata_wait_drq() {
     for (unsigned int i = 0; i < ATA_TIMEOUT; i++) {
-        unsigned char status = inb(0x1F7);
+        unsigned char status = inb(ATA_REG_STATUS);
 
         if (status & (ATA_SR_ERR | ATA_SR_DF)) {
             return 0;
@@ -33,25 +53,72 @@ int ata_wait_drq() {
     return 0;
 }
 
-int ata_read_sector(unsigned int lba, unsigned char *buffer){
+int ata_identify(unsigned short *identify_words) {
+    if (!identify_words) {
+        return 0;
+    }
+
     if (!ata_wait_busy()) {
         return 0;
     }
 
-    outb(0x1F6, 0xE0 | ((lba >> 24) & 0x0F));
-    outb( 0x1F2, 1);
-    outb(0x1F3, lba & 0xFF);
-    outb(0x1F4, (lba >> 8) & 0xFF);
-    outb(0x1F5, (lba >> 16) & 0xFF);
+    outb(ATA_REG_HDDEVSEL, 0xA0);
+    ata_io_wait();
 
-    outb(0x1F7, 0x20);
+    outb(ATA_REG_SECCOUNT0, 0);
+    outb(ATA_REG_LBA0, 0);
+    outb(ATA_REG_LBA1, 0);
+    outb(ATA_REG_LBA2, 0);
+
+    outb(ATA_REG_COMMAND, 0xEC);
+    ata_io_wait();
+
+    if (inb(ATA_REG_STATUS) == 0) {
+        return 0;
+    }
+
+    if (inb(ATA_REG_LBA1) != 0 || inb(ATA_REG_LBA2) != 0) {
+        return 0;
+    }
+
+    if (!ata_wait_drq()) {
+        return 0;
+    }
+
+    for (int i = 0; i < 256; i++) {
+        identify_words[i] = inw(ATA_REG_DATA);
+    }
+
+    return 1;
+}
+
+int ata_read_sector(unsigned int lba, unsigned char *buffer){
+    if (!buffer) {
+        return 0;
+    }
+
+    if (!ata_wait_busy()) {
+        return 0;
+    }
+
+    if (!ata_select_lba28_drive(lba)) {
+        return 0;
+    }
+
+    outb(ATA_REG_SECCOUNT0, 1);
+    outb(ATA_REG_LBA0, lba & 0xFF);
+    outb(ATA_REG_LBA1, (lba >> 8) & 0xFF);
+    outb(ATA_REG_LBA2, (lba >> 16) & 0xFF);
+
+    outb(ATA_REG_COMMAND, 0x20);
+    ata_io_wait();
 
     if (!ata_wait_drq()) {
         return 0;
     }
 
     for (int i = 0; i < 256;i++){
-        unsigned short word = inw(0x1F0);
+        unsigned short word = inw(ATA_REG_DATA);
         unsigned char low = (unsigned char)(word & 0xFF);
         unsigned char high = (unsigned char)(word >> 8);
         buffer[i*2] = low;
@@ -62,17 +129,25 @@ int ata_read_sector(unsigned int lba, unsigned char *buffer){
 }
 
 int ata_write_sector(unsigned int lba, unsigned char *buffer){
+    if (!buffer) {
+        return 0;
+    }
+
     if (!ata_wait_busy()) {
         return 0;
     }
 
-    outb(0x1F6, 0xE0 | ((lba >> 24) & 0x0F)); // master + LBA
-    outb(0x1F2, 1); // sector count
-    outb(0x1F3, lba & 0xFF);
-    outb(0x1F4, (lba >> 8) & 0xFF);
-    outb(0x1F5, (lba >> 16) & 0xFF);
+    if (!ata_select_lba28_drive(lba)) {
+        return 0;
+    }
 
-    outb(0x1F7,0x30);
+    outb(ATA_REG_SECCOUNT0, 1);
+    outb(ATA_REG_LBA0, lba & 0xFF);
+    outb(ATA_REG_LBA1, (lba >> 8) & 0xFF);
+    outb(ATA_REG_LBA2, (lba >> 16) & 0xFF);
+
+    outb(ATA_REG_COMMAND,0x30);
+    ata_io_wait();
 
     if (!ata_wait_drq()) {
         return 0;
@@ -81,10 +156,11 @@ int ata_write_sector(unsigned int lba, unsigned char *buffer){
     for(int i = 0; i < 256; i++){
         unsigned short word = (unsigned short)buffer[i * 2] |
                               ((unsigned short)buffer[i * 2 + 1] << 8);
-        outw(0x1F0, word);
+        outw(ATA_REG_DATA, word);
     }
 
-    outb(0x1F7, 0xE7);
+    outb(ATA_REG_COMMAND, 0xE7);
+    ata_io_wait();
     if (!ata_wait_busy()) {
         return 0;
     }
@@ -93,60 +169,98 @@ int ata_write_sector(unsigned int lba, unsigned char *buffer){
 }
 
 int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count){
+    if (!buffer || count == 0 || count > 255) {
+        return 0;
+    }
+
     if (!ata_wait_busy()) {
         return 0;
     }
 
-    outb(0x1F6, 0xE0 | ((lba >> 24) & 0x0F));
-    outb( 0x1F2, count);
-    outb(0x1F3, lba & 0xFF);
-    outb(0x1F4, (lba >> 8) & 0xFF);
-    outb(0x1F5, (lba >> 16) & 0xFF);
-
-    outb(0x1F7, 0x20);
-
-    if (!ata_wait_drq()) {
+    if (!ata_select_lba28_drive(lba)) {
         return 0;
     }
 
-    for (int i = 0; i < count * 256;i++){
-        unsigned short word = inw(0x1F0);
-        unsigned char low = (unsigned char)(word & 0xFF);
-        unsigned char high = (unsigned char)(word >> 8);
-        buffer[i*2] = low;
-        buffer[i*2+1] = high;
+    outb(ATA_REG_SECCOUNT0, (unsigned char)count);
+    outb(ATA_REG_LBA0, lba & 0xFF);
+    outb(ATA_REG_LBA1, (lba >> 8) & 0xFF);
+    outb(ATA_REG_LBA2, (lba >> 16) & 0xFF);
+
+    outb(ATA_REG_COMMAND, 0x20);
+    ata_io_wait();
+
+    for (unsigned int sector = 0; sector < count; sector++) {
+        if (!ata_wait_drq()) {
+            return 0;
+        }
+
+        unsigned char *sector_buffer = buffer + (sector * 512);
+        for (int i = 0; i < 256; i++) {
+            unsigned short word = inw(ATA_REG_DATA);
+            sector_buffer[i * 2] = (unsigned char)(word & 0xFF);
+            sector_buffer[i * 2 + 1] = (unsigned char)(word >> 8);
+        }
     }
 
     return 1;
 }
 int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int count){
+    if (!buffer || count == 0 || count > 255) {
+        return 0;
+    }
+
     if (!ata_wait_busy()) {
         return 0;
     }
 
-    outb(0x1F6, 0xE0 | ((lba >> 24) & 0x0F)); // master + LBA
-    outb(0x1F2, count); // sector count
-    outb(0x1F3, lba & 0xFF);
-    outb(0x1F4, (lba >> 8) & 0xFF);
-    outb(0x1F5, (lba >> 16) & 0xFF);
-
-    outb(0x1F7,0x30);
-
-    if (!ata_wait_drq()) {
+    if (!ata_select_lba28_drive(lba)) {
         return 0;
     }
 
-    for(int i = 0; i < 256 * count; i++){
-        unsigned short word = (unsigned short)buffer[i * 2] |
-                              ((unsigned short)buffer[i * 2 + 1] << 8);
-        outw(0x1F0, word);
+    outb(ATA_REG_SECCOUNT0, (unsigned char)count);
+    outb(ATA_REG_LBA0, lba & 0xFF);
+    outb(ATA_REG_LBA1, (lba >> 8) & 0xFF);
+    outb(ATA_REG_LBA2, (lba >> 16) & 0xFF);
+
+    outb(ATA_REG_COMMAND,0x30);
+    ata_io_wait();
+
+    for (unsigned int sector = 0; sector < count; sector++) {
+        if (!ata_wait_drq()) {
+            return 0;
+        }
+
+        unsigned char *sector_buffer = buffer + (sector * 512);
+        for (int i = 0; i < 256; i++) {
+            unsigned short word = (unsigned short)sector_buffer[i * 2] |
+                                  ((unsigned short)sector_buffer[i * 2 + 1] << 8);
+            outw(ATA_REG_DATA, word);
+        }
     }
 
-    outb(0x1F7, 0xE7);
+    outb(ATA_REG_COMMAND, 0xE7);
+    ata_io_wait();
     if (!ata_wait_busy()) {
         return 0;
     }
 
+    return 1;
+}
+
+int ata_smoke_test(void) {
+    unsigned short identify_words[256];
+    if (!ata_identify(identify_words)) {
+        serial_write_string("ATA identify failed or no device\r\n");
+        return 0;
+    }
+
+    unsigned char sector[512];
+    if (!ata_read_sector(0, sector)) {
+        serial_write_string("ATA read LBA0 failed\r\n");
+        return 0;
+    }
+
+    serial_write_string("ATA smoke test ok\r\n");
     return 1;
 }
 

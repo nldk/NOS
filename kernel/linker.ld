@@ -4,8 +4,11 @@ SECTIONS {
     . = 0x3000;
 
     .text : {
-        *(.text.boot)
+        KEEP(*(.text.boot))
         *(.text*)
+    }
+
+    .rodata : {
         *(.rodata*)
     }
 
@@ -16,5 +19,12 @@ SECTIONS {
     .bss : {
         *(.bss*)
         *(COMMON)
+    }
+
+    /DISCARD/ : {
+        *(.note*)
+        *(.eh_frame*)
+        *(.eh_frame_hdr*)
+        *(.comment*)
     }
 }

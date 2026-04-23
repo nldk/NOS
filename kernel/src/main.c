@@ -47,7 +47,7 @@ void shell(){
         char* component[20];
         unsigned int amount = split(component,20,' ',buffer);
         if (amount > 0 && str_cmp(component[0],"help")){
-            printf("help\necho\n");
+            printf("help\necho\nclear\nata\n");
         }
         if (amount > 0 && str_cmp(component[0],"echo")){
             for (unsigned int i = 1;i < amount;i++){
@@ -63,6 +63,13 @@ void shell(){
         }
         if(amount > 0 && str_cmp(component[0],"ls")){
             //list_files();
+        }
+        if(amount > 0 && str_cmp(component[0],"ata")){
+            if (ata_smoke_test()) {
+                printf("ata ok\n");
+            } else {
+                error_printf("ata failed\n");
+            }
         }
         reset_input_buffer();
     }
@@ -83,6 +90,13 @@ void kmain(void) {
     pic_unmask_timer();
     pic_unmask_keyboard();
     printf("GDT and TSS initialized.\n");
+
+    if (ata_smoke_test()) {
+        printf("ATA smoke test: ok\n");
+    } else {
+        error_printf("ATA smoke test: failed\n");
+    }
+
     __asm__ volatile("sti");
     printf("Kernel initialized.\n");
     shell();

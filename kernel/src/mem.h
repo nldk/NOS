@@ -5,8 +5,8 @@
 extern char heapInited;
 extern int nextAmountOfFreesUntilDefrag;
 
-#define HeapStart ((void*)0x00100000)
-#define HeapMax   ((void*)0x00200000)
+#define HeapStart ((void*)0x001000)
+#define HeapMax   ((void*)0x002000)
 
 typedef struct{
     char used;
