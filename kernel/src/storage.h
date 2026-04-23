@@ -7,6 +7,7 @@
 #define ATA_SR_DF   0x20
 #define FileSystemStart 10
 #define INITIALDIRCAP 10
+#include "utils.h"
 
 typedef struct Directory Directory;
 
@@ -109,7 +110,7 @@ void readBytesFromDisk(unsigned long long addr, void* buffer, unsigned long long
 
 char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr,int* sizeOfBuffer);
 
-File* loadFileFromDisk(unsigned long long addr);
+File* loadFileFromDisk(unsigned long long addr, bool readData);
 
 
 #endif

@@ -625,3 +625,15 @@ File* loadFileFromDisk(unsigned long long addr, bool readData) {
 
     return file;
 }
+
+void writeFile(File* file, unsigned long long addr){
+    
+}
+
+void writeFileMetadata(File* file,unsigned long long addr){
+    int offset;
+    int lba = addrToLba(&offset,addr);
+    DiskFile diskfile;
+    diskfile.name = file->name;
+    diskfile.nextFile = file.
+}
