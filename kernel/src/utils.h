@@ -2,7 +2,10 @@
 #define UTILS_H
 
 #include <stdint.h>
-
+#define NULL 0
+#define true 1
+#define false 0
+#define bool char
 static inline void outb(uint16_t port, uint8_t val) {
     __asm__ volatile("outb %0, %1" : : "a"(val), "Nd"(port));
 }
@@ -55,4 +58,5 @@ void trim(char* str);
 char str_cmp(char* str1, char* str2);
 unsigned int split(char** buff, unsigned int buffSize, char c, char* str);
 void* memcpy(void* dest, const void* src, unsigned int n);
+int ceil(double n);
 #endif

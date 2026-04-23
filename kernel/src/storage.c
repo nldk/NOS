@@ -405,33 +405,109 @@ Directory* loadDir(unsigned long long addr){
 
 char* loadFileDataFromDisk(File* file,unsigned int size){
     char* data;
-    if (size){
+    if (!size){
         data = malloc(file->size);
         size = file->size;
     }else{
         data = malloc(size);
     }
+    unsigned long long remaining = size;
     unsigned long long addr = file->firstDataAddr;
-
-    
-    
+    char* dataPtr = data;
+    int BuffSize = 0;
+    while (addr!=0){
+        char* dataFromDisk = readDataBlock(addr,&addr,&BuffSize);
+        if(!dataFromDisk){
+            error_printf("Read data from disk returned a nullpointer, skipping this datablock!");
+            continue;
+        }
+        if (BuffSize > remaining){
+            error_printf("File in mem smaler than file on disk!");
+            free(dataFromDisk);
+            break;
+        }
+        memcpy(dataPtr,dataFromDisk,BuffSize);
+        free(dataFromDisk);
+        remaining -= BuffSize;
+        dataPtr += BuffSize;
+    }
+    return data;
 }
 
-char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr){
-    unsigned char buffS[512];
-    unsigned int offset=0;
-    ata_read_sector(addrToLba(&offset,addr),buffS);
+char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr,int* sizeOfBuffer){
     int size = 0;
-    memcpy(&size,buffS+offset,sizeof(int));
-    int c = (size + 511) / 512;
-    char* dataBuff = malloc(c*512);
-    ata_read_sectors(addrToLba(&offset,addr+sizeof(int)),(unsigned char*)dataBuff,c);
-    //memcpy();
-    return dataBuff;
+    readBytesFromDisk(addr, &size, sizeof(int));
+    char* data = malloc(size);
+    if (!data) return 0;
+    readBytesFromDisk(addr + sizeof(int), data, size);
+    readBytesFromDisk(addr + sizeof(int) + size, nextAddr, sizeof(unsigned long long));
+    *sizeOfBuffer = size;
+    return data;
 }
 
 unsigned long long addrToLba(unsigned int* offset,unsigned long long addr){
     unsigned long long lba = addr / 512;
     *offset = addr - lba * 512;
     return lba;
+}
+
+void readBytesFromDisk(unsigned long long addr, void* buffer, unsigned long long size) {
+    unsigned char sector[512];
+    unsigned long long pos = 0;
+    while (pos < size) {
+        unsigned int offset = addr % 512;
+        unsigned long long lba = addr / 512;
+        ata_read_sector(lba, sector);
+        unsigned long long to_copy = 512 - offset;
+        if (to_copy > (size - pos)) {
+            to_copy = size - pos;
+        }
+        memcpy((char*)buffer + pos, sector + offset, to_copy);
+        addr += to_copy;
+        pos  += to_copy;
+    }
+}
+
+File* loadFileFromDisk(unsigned long long addr, bool readData) {
+    if (addr == 0) return NULL;
+
+    DiskFile diskFile;
+
+    readBytesFromDisk(addr, &diskFile, sizeof(DiskFile));
+
+    if (!diskFile.used) return NULL;
+
+    File* file = malloc(sizeof(File));
+    if (!file) return NULL;
+
+    file->type = FILE_TYPE_FILE;
+    file->size = diskFile.size;
+    file->firstDataAddr = diskFile.firstDataLBA;
+    file->addr = addr;
+
+    file->name = malloc(33);
+    if (!file->name) {
+        free(file);
+        return NULL;
+    }
+
+    for (int i = 0; i < 32; i++) {
+        file->name[i] = diskFile.name[i];
+        if (diskFile.name[i] == '\0') break;
+    }
+    file->name[32] = '\0';
+
+    file->data = NULL;
+
+    if (readData) {
+        unsigned int dataSize = 0;
+        file->data = loadFileDataFromDisk(file, 0); // 0 = full size
+        if (!file->data) {
+            free(file->name);
+            free(file);
+            return NULL;
+        }
+    }
+
+    return file;
 }

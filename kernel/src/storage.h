@@ -100,4 +100,12 @@ int formatDisk(unsigned int startLba);
 int loadFs(unsigned int startLba);
 
 unsigned long long addrToLba(unsigned int* offset,unsigned long long addr);
+
+void readBytesFromDisk(unsigned long long addr, void* buffer, unsigned long long size);
+
+char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr,int* sizeOfBuffer);
+
+File* loadFileFromDisk(unsigned long long addr);
+
+
 #endif
