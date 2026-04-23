@@ -635,5 +635,4 @@ void writeFileMetadata(File* file,unsigned long long addr){
     int lba = addrToLba(&offset,addr);
     DiskFile diskfile;
     diskfile.name = file->name;
-    diskfile.nextFile = file.
 }
