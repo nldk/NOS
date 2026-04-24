@@ -32,3 +32,11 @@ You can find the kerlen in `/kernel` and the sources in `/kernel/scr`. The kerne
 
 The vga utilities can be found in `vga.h`. All the functions are static. It provides functions to printing to the vga textbuffer. Using `print_char(char c)` you can put a char to the screen. The functions will automaticaly scroll if there is no space left. You can use `printf(const char *text)` to print a c string to the screen. 
 Newlines in the form of `\n` are supported. If you want to print an error use the function prefix `error_` so `printf(char* text)` becomes `error_printf(char* text)`. Use `vga_scroll()` to scroll the screen manually or `clearScreen()` to clear the screen. All the printfunctions aswel as the scroll and clear function return `void`.
+
+### memory utilities
+
+The kernel provides various memory utilities like the heap and buffercopying.
+
+#### The heap
+
+You can find the code in `mem.h` and `mem.c`. The start and end of the heap are defined using `#define HeapStart ((void*)0x001000)` for the start and `#define HeapMax   ((void*)0x002000)` for the end. The heap uses headers for knowing what is allocated and what is free. THe heap needs to be initialized once which will write a header to the begin of the heap.
