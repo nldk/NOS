@@ -16,3 +16,14 @@ times 510-($-$$) db 0
 dw 0xFAC0 #magic number the bootloader looks for
 ```
 You can find the code for the bootloader in `/NBL`.
+
+**The kernel**
+
+You can find the kerlen in `/kernel` and the sources in `/kernel/scr`. The kernel has several parts:
+
+# vga
+# memory utils and heap
+# interupthandeling
+# a file system*
+
+*:work in progress
