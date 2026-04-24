@@ -27,3 +27,8 @@ You can find the kerlen in `/kernel` and the sources in `/kernel/scr`. The kerne
 * a file system*
 
 *:work in progress
+
+*The Vga*
+
+The vga utilities can be found in `vga.h`. All the functions are static. It provides functions to printing to the vga textbuffer. Using `print_char(char c)` you can put a char to the screen. The functions will automaticaly scroll if there is no space left. You can use `printf(const char *text)` to print a c string to the screen. 
+Newlines in the form of `\n` are supported. If you want to print an error use the function prefix `error_` so `printf(char* text)` becomes `error_printf(char* text)`. Use `vga_scroll()` to scroll the screen manually or `clearScreen()` to clear the screen. All the printfunctions aswel as the scroll and clear function return `void`.
