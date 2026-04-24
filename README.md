@@ -21,9 +21,9 @@ You can find the code for the bootloader in `/NBL`.
 
 You can find the kerlen in `/kernel` and the sources in `/kernel/scr`. The kernel has several parts:
 
-# vga
-# memory utils and heap
-# interupthandeling
-# a file system*
+* vga
+* memory utils and heap
+* interupthandeling
+* a file system*
 
 *:work in progress
