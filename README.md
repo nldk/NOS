@@ -39,4 +39,13 @@ The kernel provides various memory utilities like the heap and buffercopying.
 
 #### The heap
 
-You can find the code in `mem.h` and `mem.c`. The start and end of the heap are defined using `#define HeapStart ((void*)0x001000)` for the start and `#define HeapMax   ((void*)0x002000)` for the end. The heap uses headers for knowing what is allocated and what is free. THe heap needs to be initialized once which will write a header to the begin of the heap.
+You can find the code in `mem.h` and `mem.c`. The start and end of the heap are defined using `#define HeapStart ((void*)0x001000)` for the start and `#define HeapMax   ((void*)0x002000)` for the end. The heap uses headers for knowing what is allocated and what is free. THe heap needs to be initialized once which will write a header to the begin of the heap. The struct for the header is:
+
+```c
+typedef struct{
+    char used;
+    unsigned int size;
+}HeapHeader;
+```
+Used is used to know if the memory is available and size is the amount of bytes to the next header. Use the `void initHeap();` function to initialize the heap. `void free(void* ptr);` to free a block of memory. To allocate use `void* malloc(unsigned int bytes);` to allocate n byten on the heap. Note that only the first 4MB are paged in the bootloqder and because the kernel doesnt change it jet, it can only use memory up to 4MB.
+
