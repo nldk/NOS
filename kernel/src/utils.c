@@ -97,3 +97,76 @@ void* memcpy(void* dest, const void* src, unsigned int n) {
 
     return dest;
 }
+int str_to_int(const char *str){
+    int result = 0;
+    int sign = 1;
+
+    // skip whitespace (optional but common)
+    while (*str == ' ' || *str == '\t' || *str == '\n')
+        str++;
+
+    // handle sign
+    if (*str == '-') {
+        sign = -1;
+        str++;
+    } else if (*str == '+') {
+        str++;
+    }
+
+    // convert digits
+    while (*str >= '0' && *str <= '9') {
+        result = result * 10 + (*str - '0');
+        str++;
+    }
+
+    return result * sign;
+}
+
+static int count_digits(int n)
+{
+    int count = 0;
+    if (n <= 0)
+        count++; // for '0' or '-'
+    while (n != 0)
+    {
+        n /= 10;
+        count++;
+    }
+    return count;
+}
+
+char *int_to_str(int n){
+    int len = count_digits(n);
+    char *str = (char *)malloc(len + 1);
+    if (!str)
+        return NULL;
+
+    str[len] = '\0';
+
+    long num = n; // use long to safely handle INT_MIN
+    if (num < 0)
+    {
+        str[0] = '-';
+        num = -num;
+    }
+    else if (num == 0)
+    {
+        str[0] = '0';
+        return str;
+    }
+
+    while (num > 0)
+    {
+        str[--len] = (num % 10) + '0';
+        num /= 10;
+    }
+
+    return str;
+}
+
+void memset(void* dest, int val, unsigned int n) {
+    unsigned char* d = (unsigned char*)dest;
+    for (unsigned int i = 0; i < n; i++) {
+        d[i] = (unsigned char)val;
+    }
+}

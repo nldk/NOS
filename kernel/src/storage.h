@@ -5,112 +5,56 @@
 #define ATA_SR_DRQ  0x08
 #define ATA_SR_ERR  0x01
 #define ATA_SR_DF   0x20
-#define FileSystemStart 10
-#define INITIALDIRCAP 10
+
 #include "utils.h"
 
-typedef struct Directory Directory;
-
-enum FileType{
-    FILE_TYPE_FILE,
-    FILE_TYPE_DIRECTORY
-};
 typedef struct{
-    enum FileType type;
-    char* name;
-    unsigned int size;
-    char* data;
-    unsigned long long firstDataAddr;
     unsigned long long addr;
+    unsigned long long data;
 }File;
-struct Directory{
-    enum FileType type;
-    char* name;
-    Directory** directories;
-    int amountOfMaxDirectories;
-    File** files;
-    int amountOfMaxFiles;
-    unsigned long long addr;
-};
+
 typedef struct {
-    unsigned int startLBA;
-    Directory* rootDirectory;
-} FileSystem;
+    unsigned long long addr;
+    unsigned long long* dirTable;
+}Dir;
 
-FileSystem* createFileSystem(unsigned int startLBA);
+typedef struct {
+    unsigned int inode;
+    unsigned char type;
+    char name[256];
+}Ext2DirEntry;
 
-FileSystem* readFileSystem(unsigned int startLBA);
-
-File* createFile(const char* name, unsigned int size, Directory* parent);
- 
-char* readFile(unsigned int* bufferSize,File* file);
-
-void deleteFile(File* file);
-
-int writeFile(const unsigned char* data, unsigned int dataSize, File* file);
-
-int listDirectorie(Directory* directory, Directory** directories, File** files, int maxDirs, int maxFiles);
-
-int deleteDirectory(Directory* directory);
-
-Directory* createDirectory(const char* name, Directory* parent);
-
-int findNextAvailableDir(Directory* dir);
-
-int findNextAvailableFile(Directory* dir);
-
-Directory* createRootDirectory(const char* name);
+#define EXT2_ERR_NONE 0
+#define EXT2_ERR_NOT_MOUNTED 1
+#define EXT2_ERR_NOT_FOUND 2
+#define EXT2_ERR_EXISTS 3
+#define EXT2_ERR_NOT_DIR 4
+#define EXT2_ERR_NOT_FILE 5
+#define EXT2_ERR_NO_SPACE 6
+#define EXT2_ERR_IO 7
+#define EXT2_ERR_INVALID 8
 
 int ata_wait_busy();
-
 int ata_wait_drq();
-
 int ata_read_sector(unsigned int lba, unsigned char *buffer);
-
 int ata_write_sector(unsigned int lba, unsigned char *buffer);
-
 int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count);
-
 int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int count);
-
 int ata_identify(unsigned short *identify_words);
-
 int ata_smoke_test(void);
+unsigned int addrToLBA(unsigned long long addr, int* offset);
+void readBytes(unsigned long long addr,unsigned int bytes, char* buffer);
+void writeBytes(unsigned long long addr, unsigned int bytes, char* buff);
 
-
-typedef struct {
-    unsigned short magicNumber;
-    unsigned int version;
-    unsigned int startLBA;
-    unsigned int sizeInSectors;
-}SuperBlock;
-
-typedef struct {
-    char name[32];
-    unsigned long long dirTable;
-    unsigned long long fileTable;
-    unsigned long long nextDir;
-    char used;
-}DiskDir;
-typedef struct {
-    char name[32];
-    unsigned int size;
-    unsigned int firstDataLBA;
-    unsigned long long nextFile;
-    char used;
-} DiskFile;
-
-int formatDisk(unsigned int startLba);
-
-int loadFs(unsigned int startLba);
-
-unsigned long long addrToLba(unsigned int* offset,unsigned long long addr);
-
-void readBytesFromDisk(unsigned long long addr, void* buffer, unsigned long long size);
-
-char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr,int* sizeOfBuffer);
-
-File* loadFileFromDisk(unsigned long long addr, bool readData);
+int ext2_mount(unsigned int start_lba);
+int ext2_read_file(const char* path, unsigned char* buffer, unsigned int max_bytes, unsigned int* out_size);
+int ext2_read_dir(const char* path, Ext2DirEntry** entries_out, unsigned int* out_count);
+int ext2_write_file_overwrite(const char* path, const unsigned char* data, unsigned int size);
+int ext2_create_file(const char* path, const unsigned char* data, unsigned int size);
+int ext2_mkdir(const char* path);
+int ext2_delete(const char* path);
+int ext2_delete_recursive(const char* path);
+int ext2_last_error(void);
 
 
 #endif

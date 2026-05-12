@@ -16,8 +16,8 @@ cmake -S "$KERNEL_DIR" -B "$KERNEL_BUILD_DIR"
 cmake --build "$KERNEL_BUILD_DIR"
 
 kernel_size=$(wc -c < "$KERNEL_BUILD_DIR/kernel.bin")
-if [ "$kernel_size" -gt 10240 ]; then
-	echo "kernel.bin is $kernel_size bytes; expected <= 10240 bytes"
+if [ "$kernel_size" -gt 35840 ]; then
+	echo "kernel.bin is $kernel_size bytes; expected <= 35840 bytes"
 	exit 1
 fi
 
@@ -30,10 +30,18 @@ dd if=kernel.bin of=floppy.img bs=512 seek=5 conv=notrunc
 dd if="$KERNEL_BUILD_DIR/kernel.bin" of=floppy.img bs=512 seek=6 conv=notrunc
 
 if [ ! -f "hdd.img" ]; then
-	dd if=/dev/zero of="hdd.img" bs=1M count=64
+	dd if=/dev/zero of="hdd.img" bs=1M count=640
+	if command -v mke2fs >/dev/null 2>&1; then
+		mke2fs -t ext2 -b 4096 -I 256 -F "hdd.img" >/dev/null
+		echo "Created ext2 filesystem at LBA 0 on hdd.img"
+	else
+		echo "mke2fs not found; install e2fsprogs to format hdd.img" >&2
+		exit 1
+	fi
 fi
 
 qemu-system-x86_64 \
 	-boot a \
-	-drive file=floppy.img,format=raw,if=ide,index=0 \
+	-drive file=floppy.img,format=raw,if=floppy \
+	-drive file=hdd.img,format=raw,if=ide,index=0 \
 	-serial stdio

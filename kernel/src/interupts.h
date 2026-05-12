@@ -54,7 +54,7 @@ struct __attribute__((packed)) gdtr {
     uint16_t limit;
     uint64_t base;
 };
-extern struct gdt_entry gdt[3];
+extern struct gdt_entry gdt[5];
 extern struct gdt_tss_entry tss_entry;
 void set_idt_entry(int vector, void (*handler)());
 void load_idt();
@@ -71,10 +71,13 @@ void init_gdt_tss();
 void init_keyint();
 void setKeyApplicationBind(void(*callback)(char));
 void set_keyboard_handler();
+void toRing3(uint64_t user_rip, uint64_t user_rsp);
+void toRing3_cr3(uint64_t user_cr3, uint64_t user_rip, uint64_t user_rsp);
 void pic_unmask_keyboard();
 void pic_unmask_timer();
 void pic_remap();
 void set_timer_handler();
+void syscall_init();
 
 extern struct KeyApplicationBind* keyApplicationBind;
 extern struct KeyApplicationBind* applicationBind;

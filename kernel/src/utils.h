@@ -58,5 +58,8 @@ void trim(char* str);
 char str_cmp(char* str1, char* str2);
 unsigned int split(char** buff, unsigned int buffSize, char c, char* str);
 void* memcpy(void* dest, const void* src, unsigned int n);
-int ceil(double n);
+int str_to_int(const char *str);
+char *int_to_str(int n);
+static int count_digits(int n);
+void memset(void* dest, int val, unsigned int n);
 #endif

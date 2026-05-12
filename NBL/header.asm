@@ -1,4 +1,4 @@
-dw 6
+dw 5
 dw 1
 dw 0x2000
 dw 1

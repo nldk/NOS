@@ -1,5 +1,5 @@
 dw 7 ;sector to start reading at
-dw 20 ;sectors to read
+dw 50 ;sectors to read
 dw 0x3000 ;mem adress to load at
 dw 64 ;64 = long mode
 

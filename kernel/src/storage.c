@@ -3,7 +3,7 @@
 #include "vga.h"
 #include "mem.h"
 
-#define ATA_TIMEOUT 1000000U
+#define ATA_TIMEOUT 200000U
 
 #define ATA_REG_DATA       0x1F0
 #define ATA_REG_SECCOUNT0  0x1F2
@@ -22,6 +22,30 @@ static void ata_io_wait(void) {
     inb(ATA_REG_ALTSTATUS);
 }
 
+static void serial_write_hex64(uint64_t value) {
+    char buf[19];
+    buf[0] = '0';
+    buf[1] = 'x';
+    for (int i = 0; i < 16; i++) {
+        unsigned int nibble = (unsigned int)((value >> ((15 - i) * 4)) & 0xF);
+        buf[2 + i] = (nibble < 10) ? (char)('0' + nibble) : (char)('a' + (nibble - 10));
+    }
+    buf[18] = 0;
+    serial_write_string(buf);
+}
+
+static void serial_write_hex8(uint8_t value) {
+    char buf[5];
+    buf[0] = '0';
+    buf[1] = 'x';
+    unsigned int high = (unsigned int)((value >> 4) & 0xF);
+    unsigned int low = (unsigned int)(value & 0xF);
+    buf[2] = (high < 10) ? (char)('0' + high) : (char)('a' + (high - 10));
+    buf[3] = (low < 10) ? (char)('0' + low) : (char)('a' + (low - 10));
+    buf[4] = 0;
+    serial_write_string(buf);
+}
+
 static int ata_select_lba28_drive(unsigned int lba) {
     outb(ATA_REG_HDDEVSEL, (unsigned char)(0xE0 | ((lba >> 24) & 0x0F)));
     ata_io_wait();
@@ -29,26 +53,52 @@ static int ata_select_lba28_drive(unsigned int lba) {
 }
 
 int ata_wait_busy() {
+    unsigned char status = 0;
     for (unsigned int i = 0; i < ATA_TIMEOUT; i++) {
-        unsigned char status = inb(ATA_REG_STATUS);
+        status = inb(ATA_REG_STATUS);
         if ((status & ATA_SR_BSY) == 0) {
             return 1;
         }
+    }
+    serial_write_string("ATA timeout: BSY\r\n");
+    char* status_str = int_to_str(status);
+    if (status_str) {
+        serial_write_string("ATA status=");
+        serial_write_string(status_str);
+        serial_write_string("\r\n");
+        free(status_str);
     }
     return 0;
 }
 
 int ata_wait_drq() {
+    unsigned char status = 0;
     for (unsigned int i = 0; i < ATA_TIMEOUT; i++) {
-        unsigned char status = inb(ATA_REG_STATUS);
+        status = inb(ATA_REG_STATUS);
 
         if (status & (ATA_SR_ERR | ATA_SR_DF)) {
+            serial_write_string("ATA error/DF during DRQ wait\r\n");
+            char* status_str = int_to_str(status);
+            if (status_str) {
+                serial_write_string("ATA status=");
+                serial_write_string(status_str);
+                serial_write_string("\r\n");
+                free(status_str);
+            }
             return 0;
         }
 
         if ((status & ATA_SR_BSY) == 0 && (status & ATA_SR_DRQ)) {
             return 1;
         }
+    }
+    serial_write_string("ATA timeout: DRQ\r\n");
+    char* status_str = int_to_str(status);
+    if (status_str) {
+        serial_write_string("ATA status=");
+        serial_write_string(status_str);
+        serial_write_string("\r\n");
+        free(status_str);
     }
     return 0;
 }
@@ -58,12 +108,23 @@ int ata_identify(unsigned short *identify_words) {
         return 0;
     }
 
+    serial_write_string("ata_identify: start\r\n");
+    serial_write_string("ata_identify: buf=\r\n");
+    serial_write_string("ata_identify: buf hex=");
+    serial_write_hex64((uint64_t)identify_words);
+    serial_write_string("\r\n");
+
     if (!ata_wait_busy()) {
+        serial_write_string("ata_identify: wait busy failed\r\n");
         return 0;
     }
 
     outb(ATA_REG_HDDEVSEL, 0xA0);
     ata_io_wait();
+    if (!ata_wait_busy()) {
+        serial_write_string("ata_identify: wait busy after select failed\r\n");
+        return 0;
+    }
 
     outb(ATA_REG_SECCOUNT0, 0);
     outb(ATA_REG_LBA0, 0);
@@ -72,22 +133,37 @@ int ata_identify(unsigned short *identify_words) {
 
     outb(ATA_REG_COMMAND, 0xEC);
     ata_io_wait();
-
-    if (inb(ATA_REG_STATUS) == 0) {
+    if (!ata_wait_busy()) {
+        serial_write_string("ata_identify: wait busy after command failed\r\n");
         return 0;
     }
 
-    if (inb(ATA_REG_LBA1) != 0 || inb(ATA_REG_LBA2) != 0) {
+    if (inb(ATA_REG_STATUS) == 0) {
+        serial_write_string("ata_identify: status zero\r\n");
+        return 0;
+    }
+
+    uint8_t lba1 = inb(ATA_REG_LBA1);
+    uint8_t lba2 = inb(ATA_REG_LBA2);
+    if (lba1 != 0 || lba2 != 0) {
+        serial_write_string("ata_identify: not ATA lba1=");
+        serial_write_hex8(lba1);
+        serial_write_string(" lba2=");
+        serial_write_hex8(lba2);
+        serial_write_string("\r\n");
         return 0;
     }
 
     if (!ata_wait_drq()) {
+        serial_write_string("ata_identify: wait drq failed\r\n");
         return 0;
     }
 
     for (int i = 0; i < 256; i++) {
         identify_words[i] = inw(ATA_REG_DATA);
     }
+
+    serial_write_string("ata_identify: ok\r\n");
 
     return 1;
 }
@@ -174,10 +250,12 @@ int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count
     }
 
     if (!ata_wait_busy()) {
+        serial_write_string("ata_read_sectors: wait busy failed\r\n");
         return 0;
     }
 
     if (!ata_select_lba28_drive(lba)) {
+        serial_write_string("ata_read_sectors: select drive failed\r\n");
         return 0;
     }
 
@@ -191,6 +269,19 @@ int ata_read_sectors(unsigned int lba, unsigned char *buffer, unsigned int count
 
     for (unsigned int sector = 0; sector < count; sector++) {
         if (!ata_wait_drq()) {
+            serial_write_string("ata_read_sectors: wait drq failed lba=");
+            char* lba_str = int_to_str((int)lba);
+            if (lba_str) {
+                serial_write_string(lba_str);
+                free(lba_str);
+            }
+            serial_write_string(" sector=");
+            char* sec_str = int_to_str((int)sector);
+            if (sec_str) {
+                serial_write_string(sec_str);
+                free(sec_str);
+            }
+            serial_write_string("\r\n");
             return 0;
         }
 
@@ -210,10 +301,12 @@ int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int coun
     }
 
     if (!ata_wait_busy()) {
+        serial_write_string("ata_write_sectors: wait busy failed\r\n");
         return 0;
     }
 
     if (!ata_select_lba28_drive(lba)) {
+        serial_write_string("ata_write_sectors: select drive failed\r\n");
         return 0;
     }
 
@@ -227,6 +320,7 @@ int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int coun
 
     for (unsigned int sector = 0; sector < count; sector++) {
         if (!ata_wait_drq()) {
+            serial_write_string("ata_write_sectors: wait drq failed\r\n");
             return 0;
         }
 
@@ -241,15 +335,18 @@ int ata_write_sectors(unsigned int lba, unsigned char *buffer, unsigned int coun
     outb(ATA_REG_COMMAND, 0xE7);
     ata_io_wait();
     if (!ata_wait_busy()) {
+        serial_write_string("ata_write_sectors: wait busy failed\r\n");
         return 0;
     }
 
     return 1;
 }
 
+static unsigned short ata_identify_buf[256];
+
 int ata_smoke_test(void) {
-    unsigned short identify_words[256];
-    if (!ata_identify(identify_words)) {
+    serial_write_string("ata_smoke_test: start\r\n");
+    if (!ata_identify(ata_identify_buf)) {
         serial_write_string("ATA identify failed or no device\r\n");
         return 0;
     }
@@ -264,375 +361,57 @@ int ata_smoke_test(void) {
     return 1;
 }
 
-FileSystem* createFileSystem(unsigned int startLBA){
-    FileSystem* fs = malloc(sizeof(FileSystem));
-    Directory* root = createRootDirectory("root");
-    fs->rootDirectory = root;
-    fs->startLBA = startLBA;
-    return fs;
-}
-
-FileSystem* readFileSystem(unsigned int startLBA){
-    printf("Reading fs from disk noet implemented!!!\n");
-}
-
-File* createFile(const char* name, unsigned int size, Directory* parent){
-    File* file = malloc(sizeof(File));
-    file->name = malloc(str_len(name) + 1);
-    str_cp(name,file->name);
-    file->data = malloc(size);
-    if (size <= 0){
-        file->size = 1;
-    }else{      
-        file->size = size;
+void readBytes(unsigned long long addr,unsigned int bytes, char* buffer){
+    int offset = 0;
+    unsigned int lba = addrToLBA(addr,&offset);
+    unsigned int amountOfSectors = (offset + bytes + 511) / 512;
+    char * buff = malloc(amountOfSectors*512);
+    serial_write_string("readBytes: lba=");
+    char* lba_str = int_to_str((int)lba);
+    if (lba_str) {
+        serial_write_string(lba_str);
+        free(lba_str);
     }
-    file->type = FILE_TYPE_FILE;
-    parent->files[findNextAvailableFile(parent)] = file;
-    return file;
-}
- 
-char* readFile(unsigned int* bufferSize,File* file){
-    if (!file)
-    {
-        *bufferSize = 0;
-        return "";
+    serial_write_string(" count=");
+    char* cnt_str = int_to_str((int)amountOfSectors);
+    if (cnt_str) {
+        serial_write_string(cnt_str);
+        free(cnt_str);
     }
-    
-    *bufferSize = file->size;
-    return file->data;
-}
-
-void deleteFile(File* file){
-    free(file->data);
-    file->data = 0;
-    free(file->name);
-    file->name = 0;
-    free(file);
-    file = 0;
-}
-
-int writeFile(const unsigned char* data, unsigned int dataSize, File* file){
-    if(file->size< dataSize){
-        free(file->data);
-        file->size = dataSize;
-        file->data = malloc(dataSize);
-    }
-    cp_buff(data,file->data,dataSize);
-    return 0;
-}
-
-int listDirectorie(Directory* directory, Directory** directories, File** files, int maxDirs, int maxFiles){
-    for (int i = 0; i < directory->amountOfMaxFiles; i++){
-        if (maxFiles<=i){
+    serial_write_string("\r\n");
+    for (unsigned int i = 0; i < amountOfSectors; i++) {
+        if (!ata_read_sector(lba + i, (unsigned char*)buff + (i * 512))) {
+            serial_write_string("readBytes: ata_read_sector failed\r\n");
             break;
         }
-        if(directory->files[i]){
-            files[i]=directory->files[i];
-        }
     }
-    for (int i = 0; i < directory->amountOfMaxDirectories; i++){
-        if (maxDirs<i){
+    memcpy(buffer,buff+offset,bytes);
+    free(buff);
+}
+
+void writeBytes(unsigned long long addr, unsigned int bytes, char* buff){
+    int offset = 0;
+    unsigned int lba = addrToLBA(addr,&offset);
+    unsigned int amountOfSectors = (offset + bytes + 511) / 512;
+    char* readbuff = malloc(amountOfSectors*512);
+    for (unsigned int i = 0; i < amountOfSectors; i++) {
+        if (!ata_read_sector(lba + i, (unsigned char*)readbuff + (i * 512))) {
+            serial_write_string("writeBytes: ata_read_sector failed\r\n");
             break;
         }
-        if(directory->directories[i]){
-            directories[i]=directory->directories[i];
-        }
     }
-    return 0;
-}
-
-int deleteDirectory(Directory* directory){
-    for (int i = 0; i < directory->amountOfMaxFiles; i++){
-        if (directory->files[i]){
-            deleteFile(directory->files[i]);
-        }
-    }
-    for (int i = 0; i < directory->amountOfMaxDirectories; i++){
-        if (directory->directories[i]){
-            deleteDirectory(directory->directories[i]);
-        }
-    }
-    free(directory->directories);
-    free(directory->files);
-    free(directory->name);
-    free(directory);
-    return 0;
-}
-
-Directory* createDirectory(const char* name, Directory* parent){
-    Directory* dir = malloc(sizeof(Directory));
-    dir->amountOfMaxDirectories=INITIALDIRCAP;
-    dir->amountOfMaxFiles=INITIALDIRCAP;
-    dir->directories=malloc(INITIALDIRCAP*sizeof(Directory*));
-    dir->files=malloc(INITIALDIRCAP*sizeof(File*));
-    dir->name = malloc(str_len(name) + 1);
-    str_cp(name,dir->name);
-    dir->type = FILE_TYPE_DIRECTORY;
-    for (int i = 0; i < INITIALDIRCAP; i++){
-        dir->files[i] = 0;
-        dir->directories[i] = 0;
-    }
-    parent->directories[findNextAvailableDir(parent)] = dir;
-    return dir;
-}
-Directory* createRootDirectory(const char* name){
-    Directory* dir = malloc(sizeof(Directory));
-    dir->amountOfMaxDirectories=INITIALDIRCAP;
-    dir->amountOfMaxFiles=INITIALDIRCAP;
-    dir->directories=malloc(INITIALDIRCAP*sizeof(Directory*));
-    dir->files=malloc(INITIALDIRCAP*sizeof(File*));
-    dir->name = malloc(str_len(name) + 1);
-    str_cp(name,dir->name);
-    for (int i = 0; i < INITIALDIRCAP; i++){
-        dir->files[i] = 0;
-        dir->directories[i] = 0;
-    }
-    dir->type = FILE_TYPE_DIRECTORY;
-    return dir;
-}
-int findNextAvailableFile(Directory* dir){
-    File** files = dir->files;
-    for (int i = 0; i < dir->amountOfMaxFiles; i++){
-        if (files[i]==0){
-            return i;
-        }
-    }
-    File** tmpFiles = malloc((dir->amountOfMaxFiles*2)*sizeof(File*));
-    int index = 0;
-    for (int i = 0; i < dir->amountOfMaxFiles; i++){
-        tmpFiles[index] = files[index];
-        index++;
-    }
-    int next = index;
-    dir->amountOfMaxFiles *=2;
-    free(dir->files);
-    dir->files = tmpFiles;
-    for (int i = index; i < dir->amountOfMaxFiles; i++){
-        dir->files[i]=0;
-    }
-    return next;
-}
-int findNextAvailableDir(Directory* dir){
-    Directory** dirs = dir->directories;
-    for (int i = 0; i < dir->amountOfMaxDirectories; i++){
-        if (dirs[i]==0){
-            return i;
-        }
-    }
-    Directory** tmpDirs = malloc((dir->amountOfMaxDirectories*2)*sizeof(Directory*));
-    int index = 0;
-    for (int i = 0; i < dir->amountOfMaxDirectories; i++){
-        tmpDirs[index] = dirs[index];
-        index++;
-    }
-    int next = index;
-    dir->amountOfMaxDirectories *=2;
-    free(dir->directories);
-    dir->directories = tmpDirs;
-    for (int i = index; i < dir->amountOfMaxDirectories; i++){
-        dir->directories[i]=0;
-    }
-    return next;
-}
-
-int formatDisk(unsigned int startLba){
-    SuperBlock sp = {0xCADE,0,startLba,0};
-    DiskDir dd = {"root",0,0,0};
-    char buff[512] = {0};
-    memcpy(buff, &sp, sizeof(SuperBlock));
-    memcpy(buff + sizeof(SuperBlock), &dd, sizeof(DiskDir));
-
-    ata_write_sector(startLba,buff);
-}
-
-int loadFs(unsigned int startLba){
-    char buff[512] = {0};
-    ata_read_sector(startLba,buff);
-    SuperBlock sp;
-    DiskDir rd;
-    memcpy(&sp,buff,sizeof(SuperBlock));
-    memcpy(&rd,buff+sizeof(SuperBlock),sizeof(DiskDir));
-}
-
-DiskDir loadDirFromDisk(unsigned long long addr){
-    unsigned int offset = 0;
-    unsigned long long lba = addrToLba(&offset,addr);
-    DiskDir dd;
-    if (offset>512-sizeof(DiskDir)){
-        char buff1[512];
-        ata_read_sector(lba,buff1);
-        char buff2[512];
-        ata_read_sector(lba+1,buff2);
-        memcpy(&dd,buff1+offset,512-offset);
-        memcpy(&dd+(512-offset),buff2,sizeof(DiskDir)-(512-offset));
-    }else{
-        char buff[512];
-        ata_read_sector(lba,buff);
-        memcpy(&dd,buff+offset,sizeof(DiskDir));
-    }
-    return dd;
-}
-
-Directory* loadDir(unsigned long long addr){
-    DiskDir dd = loadDirFromDisk(addr);
-    Directory* dir = createRootDirectory(dd.name);
-    dir->addr = addr;
-    unsigned long long currentDirAddr = dd.dirTable;
-
-    while (currentDirAddr != 0) {
-        DiskDir childDiskDir = loadDirFromDisk(currentDirAddr);
-        Directory* childDir = loadDir(currentDirAddr); // recursion
-        dir->directories[findNextAvailableDir(dir)] = childDir;
-        currentDirAddr = childDiskDir.nextDir;
-    }
-
-    unsigned long long currentFileAddr = dd.fileTable;
-
-    while (currentFileAddr != 0) {
-        DiskFile df;
-
-        unsigned int offset = 0;
-        unsigned long long lba = addrToLba(&offset, currentFileAddr);
-
-        char buff[512];
-        ata_read_sector(lba, buff);
-
-        memcpy(&df, buff + offset, sizeof(DiskFile));
-
-        File* file = malloc(sizeof(File));
-        file->type = FILE_TYPE_FILE;
-
-        file->name = malloc(33);
-        str_cp(df.name, file->name);
-
-        file->size = df.size;
-        file->data = 0;
-        file->firstDataAddr = df.firstDataLBA;
-        file->addr = currentFileAddr;
-
-        dir->files[findNextAvailableFile(dir)] = file;
-        
-        currentFileAddr = df.nextFile;
-    }
-    
-}
-
-char* loadFileDataFromDisk(File* file,unsigned int size){
-    char* data;
-    if (!size){
-        data = malloc(file->size);
-        size = file->size;
-    }else{
-        data = malloc(size);
-    }
-    unsigned long long remaining = size;
-    unsigned long long addr = file->firstDataAddr;
-    char* dataPtr = data;
-    int BuffSize = 0;
-    while (addr!=0){
-        char* dataFromDisk = readDataBlock(addr,&addr,&BuffSize);
-        if(!dataFromDisk){
-            error_printf("Read data from disk returned a nullpointer, skipping this datablock!");
-            continue;
-        }
-        if (BuffSize > remaining){
-            error_printf("File in mem smaler than file on disk!");
-            free(dataFromDisk);
+    memcpy(readbuff+offset,buff,bytes);
+    for (unsigned int i = 0; i < amountOfSectors; i++) {
+        if (!ata_write_sector(lba + i, (unsigned char*)readbuff + (i * 512))) {
+            serial_write_string("writeBytes: ata_write_sector failed\r\n");
             break;
         }
-        memcpy(dataPtr,dataFromDisk,BuffSize);
-        free(dataFromDisk);
-        remaining -= BuffSize;
-        dataPtr += BuffSize;
     }
-    return data;
+    free(readbuff);
 }
 
-char* readDataBlock(unsigned long long addr,unsigned long long* nextAddr,int* sizeOfBuffer){
-    int size = 0;
-    readBytesFromDisk(addr, &size, sizeof(int));
-    char* data = malloc(size);
-    if (!data) return 0;
-    readBytesFromDisk(addr + sizeof(int), data, size);
-    readBytesFromDisk(addr + sizeof(int) + size, nextAddr, sizeof(unsigned long long));
-    *sizeOfBuffer = size;
-    return data;
+unsigned int addrToLBA(unsigned long long addr, int* offset){
+    *offset =  addr % 512;
+    return addr / 512;
 }
 
-unsigned long long addrToLba(unsigned int* offset,unsigned long long addr){
-    unsigned long long lba = addr / 512;
-    *offset = addr - lba * 512;
-    return lba;
-}
-
-void readBytesFromDisk(unsigned long long addr, void* buffer, unsigned long long size) {
-    unsigned char sector[512];
-    unsigned long long pos = 0;
-    while (pos < size) {
-        unsigned int offset = addr % 512;
-        unsigned long long lba = addr / 512;
-        ata_read_sector(lba, sector);
-        unsigned long long to_copy = 512 - offset;
-        if (to_copy > (size - pos)) {
-            to_copy = size - pos;
-        }
-        memcpy((char*)buffer + pos, sector + offset, to_copy);
-        addr += to_copy;
-        pos  += to_copy;
-    }
-}
-
-File* loadFileFromDisk(unsigned long long addr, bool readData) {
-    if (addr == 0) return NULL;
-
-    DiskFile diskFile;
-
-    readBytesFromDisk(addr, &diskFile, sizeof(DiskFile));
-
-    if (!diskFile.used) return NULL;
-
-    File* file = malloc(sizeof(File));
-    if (!file) return NULL;
-
-    file->type = FILE_TYPE_FILE;
-    file->size = diskFile.size;
-    file->firstDataAddr = diskFile.firstDataLBA;
-    file->addr = addr;
-
-    file->name = malloc(33);
-    if (!file->name) {
-        free(file);
-        return NULL;
-    }
-
-    for (int i = 0; i < 32; i++) {
-        file->name[i] = diskFile.name[i];
-        if (diskFile.name[i] == '\0') break;
-    }
-    file->name[32] = '\0';
-
-    file->data = NULL;
-
-    if (readData) {
-        unsigned int dataSize = 0;
-        file->data = loadFileDataFromDisk(file, 0); // 0 = full size
-        if (!file->data) {
-            free(file->name);
-            free(file);
-            return NULL;
-        }
-    }
-
-    return file;
-}
-
-void writeFile(File* file, unsigned long long addr){
-    
-}
-
-void writeFileMetadata(File* file,unsigned long long addr){
-    int offset;
-    int lba = addrToLba(&offset,addr);
-    DiskFile diskfile;
-    diskfile.name = file->name;
-}

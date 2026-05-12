@@ -76,12 +76,10 @@ serialPutChar:
     out dx, al
     ret
 
- ;set al to amount of sectors to be read, cl to the sector where to start and bx to the mem address to load it to
+ ;set al to amount of sectors to be read, cl to the sector where to start, bx to the mem address to load it to, ch to the head, dh to the cylinder and then call this function to read the kernel from disk
 readDisk:
     pusha
     mov ah, 0x02        ; BIOS read sector
-    mov ch, 0x00        ; cylinder 0
-    mov dh, 0x00        ; head 0
     mov dl, [bootDrive] ; BIOS boot drive
     int 0x13
     jc diskError
@@ -127,7 +125,13 @@ scanDiskForKernels:
     mov cl, 3
 
 .readHeader:
+    push cx
+    push dx
+    mov ch, 0
+    mov dh, 0
     call readDisk
+    pop dx
+    pop cx
     mov ax, [bx + 510]
     cmp ax, 0xFAC0
     jnz .nextSector
@@ -197,16 +201,27 @@ jumpToKernel:
     add bx, ax
     mov di, bx
     mov cl, [bx]
-    mov al, [bx+2]
+    mov ax, [bx+2]
     mov bx, [bx + 4]
     mov dx, [di + 6]
     mov [kernelMode], dx
+    mov [tempCl], cl
+    push dx
+    call LBA_to_CHS
+     ; After this call, CH = cylinder, DH = head, CL = sector
+     ; We need to set up the registers for readDisk:
+     ; AL = number of sectors to read (already in CL)
+     ; CH = cylinder (already in CH)
+     ; DH = head (already in DH)
+     ; DL = boot drive (already in [bootDrive])
+     ; BX = memory address to load to (already in BX)
+    mov al, cl
+    mov cl, [tempCl]
     call readDisk
+    pop dx
     mov al, 'R'
     call serialPutChar
     xor ax, ax
-    push ax
-    push bx
     cmp word [kernelMode], 1
     je .jump
     mov al, 'P'
@@ -314,20 +329,20 @@ setCPUIn64_bitMode:
     ; Load long-mode-capable GDT descriptor
     lgdt [gdt64_descriptor]
 
-    ; Setup identity-mapped page tables at 0x5000-0x7000
-    ; PML4 at 0x5000: single entry pointing to PDPT at 0x6000
-    mov dword [0x5000], 0x6003
-    mov dword [0x5004], 0x0
+    ; Setup identity-mapped page tables at 0x70000-0x72000 (above kernel image)
+    ; PML4 at 0x70000: single entry pointing to PDPT at 0x71000
+    mov dword [0x70000], 0x71003
+    mov dword [0x70004], 0x0
     
-    ; PDPT at 0x6000: single entry pointing to PD at 0x7000
-    mov dword [0x6000], 0x7003
-    mov dword [0x6004], 0x0
+    ; PDPT at 0x71000: single entry pointing to PD at 0x72000
+    mov dword [0x71000], 0x72003
+    mov dword [0x71004], 0x0
     
-    ; PD at 0x7000: identity map 0x0-2MB with large pages
-    mov dword [0x7000], 0x83
-    mov dword [0x7004], 0x0
-    mov dword [0x7008], 0x200083
-    mov dword [0x700C], 0x0
+    ; PD at 0x72000: identity map 0x0-4MB with large pages
+    mov dword [0x72000], 0x83
+    mov dword [0x72004], 0x0
+    mov dword [0x72008], 0x200083
+    mov dword [0x7200C], 0x0
 
     ; Enable PAE (Physical Address Extension)
     mov eax, cr4
@@ -335,7 +350,7 @@ setCPUIn64_bitMode:
     mov cr4, eax
 
     ; Load page table base address
-    mov eax, 0x5000
+    mov eax, 0x70000
     mov cr3, eax
 
     ; Enable long mode
@@ -387,6 +402,44 @@ longmode_start:
     ; Jump to kernel (address is in ESI from earlier)
     mov rax, rsi
     jmp rax
+    
+; ----------------------------------------
+; LBA_to_CHS
+; Converts LBA sector number to CHS
+;
+; Input:
+;   AX = LBA
+;   BX = sectors per track
+;   CX = number of heads
+;
+; Output:
+;   CH = cylinder
+;   DH = head
+;   CL = sector
+;
+; Destroys:
+;   AX, DX
+; ----------------------------------------
+
+LBA_to_CHS:
+
+    xor dx, dx
+    div bx              ; AX / SPT
+
+    ; DX = remainder = sector - 1
+    inc dl
+    mov cl, dl          ; sector
+
+    xor dx, dx
+    div cx              ; AX / heads
+
+    ; DX = head
+    ; AX = cylinder
+
+    mov dh, dl          ; head
+    mov ch, al          ; cylinder
+
+    ret
 diskErrorString db "error reading disk",0x0D,0xA,0
 
 helloInfo: db "stage 2 booted", 0x0D, 0xA,0
@@ -397,4 +450,5 @@ kernelCount dw 0
 kernelAddr: dd 0
 kernelMode: dw 0
 bootDrive: db 0
+tempCl: db 0
 times 512 *2 -($-$$) db 0
