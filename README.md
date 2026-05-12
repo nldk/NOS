@@ -39,4 +39,26 @@ The kernel provides various memory utilities like the heap and buffercopying.
 
 #### The heap
 
-You can find the code in `mem.h` and `mem.c`. The start and end of the heap are defined using `#define HeapStart ((void*)0x001000)` for the start and `#define HeapMax   ((void*)0x002000)` for the end. The heap uses headers for knowing what is allocated and what is free. THe heap needs to be initialized once which will write a header to the begin of the heap.
+You can find the code in `mem.h` and `mem.c`. The start and end of the heap are defined using `#define HeapStart ((void*)0x001000)` for the start and `#define HeapMax   ((void*)0x002000)` for the end. The heap uses headers for knowing what is allocated and what is free. THe heap needs to be initialized once which will write a header to the begin of the heap. The struct for the header is:
+
+```c
+typedef struct{
+    char used;
+    unsigned int size;
+}HeapHeader;
+```
+Used is used to know if the memory is available and size is the amount of bytes to the next header. Use the `void initHeap();` function to initialize the heap. `void free(void* ptr);` to free a block of memory. To allocate use `void* malloc(unsigned int bytes);` to allocate n byten on the heap. Note that only the first 4MB are paged in the bootloader and because the kernel doesnt change it jet, it can only use memory up to 4MB.
+
+#### memcpy
+
+Memcpy is just the same as in the c standard lib and can be found in `utils.h`. The function defenition is `void* memcpy(void* dest, const void* src, unsigned int n)` where n is the amount of bytes and it return a void* to dest.
+
+### utilities
+You can find all the following functions in `utils.h` and `utils.c`.
+
+#### str_cmp
+String compare just compares string and returns 1 if the srings are equal and 0 if not. The fuction defenition is `char str_cmp(char* str1, char* str2)`. 
+
+#### split
+Split splits a string by the delimiter and puts it in the provided buffer. It uses malloc to alloczte mem for the string so remember to free it. It also takes the buffersize and won't override data if this argument is correct. Split returns tha amount of parts that have been put into the buffer. The defenition is `unsigned int split(char** buff, unsigned int buffSize, char c, char* str)`.
+
