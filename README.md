@@ -24,9 +24,10 @@ You can find the kerlen in `/kernel` and the sources in `/kernel/scr`. The kerne
 * vga
 * memory utils and heap
 * interupthandeling
-* a file system*
-
-*:work in progress
+* a file system
+* ring 3
+* a minimal shell
+* syscalls
 
 ### The Vga utilities
 
